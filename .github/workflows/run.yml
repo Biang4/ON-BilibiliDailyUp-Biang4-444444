@@ -1,15 +1,12 @@
 name: test
 
 on:
-  # 启用定时任务，每天北京时间凌晨 2 点（UTC 时间前一天 18:00）执行
   schedule:
-    - cron: '0 18 * * *'  
-  # 手动触发工作流
+    - cron: '0 18 * * *'  # 北京时间凌晨2点执行
   workflow_dispatch:  
 
 jobs:
   sign_in:
-    # 使用最新的 Ubuntu 环境
     runs-on: ubuntu-latest
 
     steps:
@@ -21,7 +18,7 @@ jobs:
         with:
           python-version: '3.x'
 
-      - name: 【重要】设置系统时区为北京时间 (UTC+8)
+      - name: 设置系统时区为北京时间 (UTC+8)
         run: sudo timedatectl set-timezone Asia/Shanghai
         continue-on-error: true
 
@@ -39,15 +36,11 @@ jobs:
 
       - name: Run sign-in script and record log
         run: |
-          # 开启错误捕获，记录脚本执行状态（成功/失败）
           set +e
-          # 执行签到脚本，同时把脚本所有输出内容保存到临时文件，方便写入日志
           python main.py > script_output.log 2>&1
-          # 记录脚本执行的退出码 0=成功 非0=失败
           SCRIPT_EXIT_CODE=$?
           set -e
           
-          # ========== 核心：写入日志到 log.md 文件 ==========
           echo -e "---\n## 自动签到执行日志" >> log.md
           echo -e "**执行时间(北京时间)**: $(date +'%Y-%m-%d %H:%M:%S')" >> log.md
           if [ $SCRIPT_EXIT_CODE -eq 0 ]; then
@@ -56,8 +49,6 @@ jobs:
             echo -e "**执行状态**: ❌ 签到失败（错误码: $SCRIPT_EXIT_CODE）" >> log.md
           fi
           echo -e "**脚本执行详情**: \n\`\`\`bash\n$(cat script_output.log)\n\`\`\`\n\n" >> log.md
-          
-          # 删除临时输出文件
           rm -rf script_output.log
         env:
           COOKIES: ${{ secrets.COOKIES }}
@@ -67,17 +58,22 @@ jobs:
           SERVER_KEY: ${{ secrets.SERVER_KEY }}
         continue-on-error: false
 
-      - name: 自动提交日志文件到仓库
+      - name: 自动提交日志文件到仓库【修复报错完整版】
         run: |
-          # 配置git提交的用户名和邮箱（固定写法）
+          # 解决Git目录权限警告（Actions必加）
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+          # 配置提交人信息
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # 拉取最新代码，避免提交冲突
-          git pull origin main --rebase
-          # 添加日志文件到暂存区
+          
+          # ============ 核心修复：解决「未暂存文件」问题 ============
+          # 1. 先把所有修改的文件(这里就是log.md)加入暂存区
           git add log.md
-          # 提交日志，备注带北京时间
+          # 2. 放弃rebase，改用普通pull，兼容有暂存文件的场景，避免冲突
+          git pull origin main --no-rebase --allow-unrelated-histories
+          
+          # 3. 提交日志文件
           git commit -m "chore: 自动更新签到日志 $(date +'%Y-%m-%d %H:%M:%S')"
-          # 推送提交到仓库（使用github内置token授权，无需手动配置）
+          # 4. 推送提交到仓库（内置token自动授权）
           git push origin main
         continue-on-error: true
