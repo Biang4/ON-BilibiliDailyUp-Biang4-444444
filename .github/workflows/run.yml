@@ -5,6 +5,10 @@ on:
     - cron: '0 18 * * *'  # 北京时间凌晨2点
   workflow_dispatch:
 
+# 👉 关键：强制使用 Node.js 24 运行所有 Action，彻底消除警告
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   sign_in:
     runs-on: ubuntu-latest
@@ -13,10 +17,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4  # 升级到 v4（Node24 兼容）
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5  # 升级到 v5（无警告）
+        uses: actions/setup-python@v5
         with:
           python-version: '3.x'
 
