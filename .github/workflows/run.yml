@@ -2,53 +2,53 @@ name: test
 
 on:
   schedule:
-    - cron: '0 18 * * *'  # 北京时间凌晨2点执行
-  workflow_dispatch:  
+    - cron: '0 18 * * *'  # 北京时间凌晨2点
+  workflow_dispatch:
 
 jobs:
   sign_in:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # 必须：允许提交日志
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4  # 升级到 v4（Node24 兼容）
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5  # 升级到 v5（无警告）
         with:
           python-version: '3.x'
 
-      - name: 设置系统时区为北京时间 (UTC+8)
+      - name: 设置时区(北京时间)
         run: sudo timedatectl set-timezone Asia/Shanghai
         continue-on-error: true
 
-      - name: Modify DNS settings
+      - name: 修改DNS
         run: |
-          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
-          echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf > /dev/null
-        continue-on-error: false
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
+          echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf
 
-      - name: Install dependencies
+      - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-        continue-on-error: false
 
-      - name: Run sign-in script and record log
+      - name: 执行签到 + 记录日志
         run: |
           set +e
           python main.py > script_output.log 2>&1
           SCRIPT_EXIT_CODE=$?
           set -e
-          
+
           echo -e "---\n## 自动签到执行日志" >> log.md
-          echo -e "**执行时间(北京时间)**: $(date +'%Y-%m-%d %H:%M:%S')" >> log.md
+          echo -e "执行时间(北京时间): $(date +'%Y-%m-%d %H:%M:%S')" >> log.md
           if [ $SCRIPT_EXIT_CODE -eq 0 ]; then
-            echo -e "**执行状态**: ✅ 签到成功" >> log.md
+            echo -e "执行状态: ✅ 签到成功" >> log.md
           else
-            echo -e "**执行状态**: ❌ 签到失败（错误码: $SCRIPT_EXIT_CODE）" >> log.md
+            echo -e "执行状态: ❌ 签到失败（错误码: $SCRIPT_EXIT_CODE）" >> log.md
           fi
-          echo -e "**脚本执行详情**: \n\`\`\`bash\n$(cat script_output.log)\n\`\`\`\n\n" >> log.md
+          echo -e "脚本详情:\n\`\`\`bash\n$(cat script_output.log)\n\`\`\`\n" >> log.md
           rm -rf script_output.log
         env:
           COOKIES: ${{ secrets.COOKIES }}
@@ -56,24 +56,15 @@ jobs:
           WECHAT_SECRET: ${{ secrets.WECHAT_SECRET }}
           WECHAT_APP_ID: ${{ secrets.WECHAT_APP_ID }}
           SERVER_KEY: ${{ secrets.SERVER_KEY }}
-        continue-on-error: false
 
-      - name: 自动提交日志文件到仓库【修复报错完整版】
+      - name: 提交日志到仓库
         run: |
-          # 解决Git目录权限警告（Actions必加）
           git config --global --add safe.directory $GITHUB_WORKSPACE
-          # 配置提交人信息
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # ============ 核心修复：解决「未暂存文件」问题 ============
-          # 1. 先把所有修改的文件(这里就是log.md)加入暂存区
+
           git add log.md
-          # 2. 放弃rebase，改用普通pull，兼容有暂存文件的场景，避免冲突
-          git pull origin main --no-rebase --allow-unrelated-histories
-          
-          # 3. 提交日志文件
-          git commit -m "chore: 自动更新签到日志 $(date +'%Y-%m-%d %H:%M:%S')"
-          # 4. 推送提交到仓库（内置token自动授权）
+          git pull origin main --no-rebase --autostash
+          git commit -m "chore: 自动更新签到日志 $(date +'%Y-%m-%d')"
           git push origin main
         continue-on-error: true
